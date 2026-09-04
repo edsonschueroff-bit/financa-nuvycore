@@ -359,11 +359,31 @@ const processarWebhookTelegram = async (req, res) => {
 
     if (!textoMensagem) return;
 
+    // 4. Gravar Mensagem Recebida no Histórico da Conversa
+    try {
+      await db.query(
+        `INSERT INTO whatsapp_mensagens_historico (empresa_id, admin_id, telefone, papel, conteudo) VALUES (?, ?, ?, 'user', ?)`,
+        [empresaId, admin.id, cleanChatId, textoMensagem]
+      );
+    } catch (e) { }
+
+    // 5. Buscar Histórico Recente da Conversa (Últimas 10 mensagens)
+    const [historicoRows] = await db.query(
+      `SELECT papel, conteudo FROM whatsapp_mensagens_historico 
+       WHERE empresa_id = ? AND (admin_id = ? OR telefone = ?)
+       ORDER BY id DESC LIMIT 10`,
+      [empresaId, admin.id, cleanChatId]
+    );
+    const historicoCronologico = historicoRows.reverse();
+
+    // 6. Buscar Snapshot Financeiro 360° em Tempo Real
+    const snapshot = await obterSnapshotFinanceiroCompleto(empresaId, admin.id, cleanChatId);
+    let rascunhoAtivo = snapshot.rascunhoAtivo;
+
     const msgLimpa = textoMensagem.trim().toLowerCase();
-    const isAfirmativa = /^(sim|s|ok|confirmar|confirma|confirmo|pode|pode lançar|pode salvar|salva|salvar|gravar|positivo|show)$/i.test(msgLimpa);
-    // 'não/nao/n' removidos: muito ambíguos (ex: "Não, o valor é diferente" ≠ cancelamento).
-    // Só palavras de cancelamento explícito encerram o rascunho.
-    const isCancelamento = /^(cancelar|cancela|cancelo|esquece|abortar|deixa pra lá|deixa pra la|não quero|nao quero|descartar|descarta)$/i.test(msgLimpa);
+    const isAfirmativa = /^(sim|s|ok|confirmar|confirma|confirmo|pode|pode lançar|pode salvar|salva|salvar|gravar|positivo|show|bora|manda)$/i.test(msgLimpa);
+    // Suporta palavras de cancelamento e 'não' isolado
+    const isCancelamento = /^(cancelar|cancela|cancelo|esquece|abortar|deixa pra lá|deixa pra la|não quero|nao quero|descartar|descarta|não|nao|n)$/i.test(msgLimpa);
 
     let dadosRascunhoAtivo = {};
     if (rascunhoAtivo) {
@@ -603,6 +623,130 @@ const processarWebhookTelegram = async (req, res) => {
       return;
     }
 
+    // SE TEM RASCUNHO ATIVO E O USUÁRIO ENVIOU UMA MUDANÇA DE VALOR DIRETA
+    const matchAjusteValor = msgLimpa.match(/(?:mudar? valor|trocar? valor|alterar? valor|o valor é|valor\s*:?|na verdade é|deu|foi)\s*(?:de|para|pra|:)?\s*(?:r\$)?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    if (rascunhoAtivo && matchAjusteValor && !fotoComprovanteUrl) {
+      const novoValor = parseFloat(matchAjusteValor[1].replace(",", "."));
+      if (novoValor > 0) {
+        dadosRascunhoAtivo.valor = novoValor;
+        await db.query(
+          `UPDATE whatsapp_ia_rascunhos SET dados_json = ?, updated_at = NOW() WHERE id = ?`,
+          [JSON.stringify(dadosRascunhoAtivo), rascunhoAtivo.id]
+        );
+
+        const dataFmt = new Date((toDateSQL(dadosRascunhoAtivo.data_vencimento) || snapshot.hojeIso) + "T00:00:00Z").toLocaleDateString("pt-BR", { timeZone: "UTC" });
+        const textoProposta = `📋 *Confirmar este lançamento?*\n\n` +
+          `• *Tipo:* ${dadosRascunhoAtivo.tipo === 'receita' ? 'Receita 🟢' : 'Despesa 🔴'}\n` +
+          `• *Descrição:* ${dadosRascunhoAtivo.descricao}\n` +
+          `• *Valor:* ${formatBRL(dadosRascunhoAtivo.valor)} ✨ _(atualizado!)_\n` +
+          `• *Data:* ${dataFmt}\n` +
+          `• *Categoria:* ${dadosRascunhoAtivo.categoria_nome}\n` +
+          `${dadosRascunhoAtivo.pagador ? `• *Pagador:* 👤 ${dadosRascunhoAtivo.pagador}\n` : ''}` +
+          `${dadosRascunhoAtivo.recebedor ? `• *Recebedor:* 🏢 ${dadosRascunhoAtivo.recebedor}\n` : (dadosRascunhoAtivo.contato_nome ? `• *${dadosRascunhoAtivo.tipo === 'receita' ? 'Cliente / Pagador' : 'Fornecedor'}:* 👤 ${dadosRascunhoAtivo.contato_nome}\n` : '')}` +
+          `• *Conta Bancária:* 💳 ${dadosRascunhoAtivo.conta_nome || 'Conta Principal'}\n` +
+          `• *Status:* ${dadosRascunhoAtivo.status === 'pago' ? (dadosRascunhoAtivo.tipo === 'receita' ? 'Recebido ✅' : 'Pago ✅') : 'Pendente ⏰'}\n` +
+          `${dadosRascunhoAtivo.comprovante_url ? '• *Comprovante:* 📎 Anexo vinculado!\n' : ''}\n` +
+          `Clique abaixo para confirmar ou ajustar:`;
+
+        const botoes = [
+          [
+            { text: "✅ Sim, Confirmar e Salvar", callback_data: "confirmar_lancamento" },
+            { text: "❌ Ajustar", callback_data: "cancelar_lancamento" },
+          ],
+        ];
+
+        await enviarBotoesTelegram(cleanChatId, textoProposta, botoes);
+        try {
+          await db.query(
+            `INSERT INTO whatsapp_mensagens_historico (empresa_id, admin_id, telefone, papel, conteudo) VALUES (?, ?, ?, 'assistant', ?)`,
+            [empresaId, admin.id, cleanChatId, textoProposta]
+          );
+        } catch (e) { }
+        return;
+      }
+    }
+
+    // SE TEM RASCUNHO ATIVO E O USUÁRIO ENVIOU UMA MUDANÇA DE TIPO (RECEITA vs DESPESA)
+    const isMudaDespesa = /(?:despesa|saída|saida|pagamento)/i.test(msgLimpa) && /(?:é|muda|troca|marca como|coloca como)/i.test(msgLimpa);
+    const isMudaReceita = /(?:receita|entrada|recebimento)/i.test(msgLimpa) && /(?:é|muda|troca|marca como|coloca como)/i.test(msgLimpa);
+    if (rascunhoAtivo && (isMudaDespesa || isMudaReceita) && !fotoComprovanteUrl) {
+      dadosRascunhoAtivo.tipo = isMudaReceita ? "receita" : "despesa";
+      await db.query(
+        `UPDATE whatsapp_ia_rascunhos SET dados_json = ?, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(dadosRascunhoAtivo), rascunhoAtivo.id]
+      );
+
+      const dataFmt = new Date((toDateSQL(dadosRascunhoAtivo.data_vencimento) || snapshot.hojeIso) + "T00:00:00Z").toLocaleDateString("pt-BR", { timeZone: "UTC" });
+      const textoProposta = `📋 *Confirmar este lançamento?*\n\n` +
+        `• *Tipo:* ${dadosRascunhoAtivo.tipo === 'receita' ? 'Receita 🟢' : 'Despesa 🔴'} ✨ _(atualizado!)_\n` +
+        `• *Descrição:* ${dadosRascunhoAtivo.descricao}\n` +
+        `• *Valor:* ${formatBRL(dadosRascunhoAtivo.valor)}\n` +
+        `• *Data:* ${dataFmt}\n` +
+        `• *Categoria:* ${dadosRascunhoAtivo.categoria_nome}\n` +
+        `${dadosRascunhoAtivo.pagador ? `• *Pagador:* 👤 ${dadosRascunhoAtivo.pagador}\n` : ''}` +
+        `${dadosRascunhoAtivo.recebedor ? `• *Recebedor:* 🏢 ${dadosRascunhoAtivo.recebedor}\n` : (dadosRascunhoAtivo.contato_nome ? `• *${dadosRascunhoAtivo.tipo === 'receita' ? 'Cliente / Pagador' : 'Fornecedor'}:* 👤 ${dadosRascunhoAtivo.contato_nome}\n` : '')}` +
+        `• *Conta Bancária:* 💳 ${dadosRascunhoAtivo.conta_nome || 'Conta Principal'}\n` +
+        `• *Status:* ${dadosRascunhoAtivo.status === 'pago' ? (dadosRascunhoAtivo.tipo === 'receita' ? 'Recebido ✅' : 'Pago ✅') : 'Pendente ⏰'}\n` +
+        `${dadosRascunhoAtivo.comprovante_url ? '• *Comprovante:* 📎 Anexo vinculado!\n' : ''}\n` +
+        `Clique abaixo para confirmar ou ajustar:`;
+
+      const botoes = [
+        [
+          { text: "✅ Sim, Confirmar e Salvar", callback_data: "confirmar_lancamento" },
+          { text: "❌ Ajustar", callback_data: "cancelar_lancamento" },
+        ],
+      ];
+
+      await enviarBotoesTelegram(cleanChatId, textoProposta, botoes);
+      try {
+        await db.query(
+          `INSERT INTO whatsapp_mensagens_historico (empresa_id, admin_id, telefone, papel, conteudo) VALUES (?, ?, ?, 'assistant', ?)`,
+          [empresaId, admin.id, cleanChatId, textoProposta]
+        );
+      } catch (e) { }
+      return;
+    }
+
+    // SE TEM RASCUNHO ATIVO E O USUÁRIO ENVIOU UMA MUDANÇA DE DESCRIÇÃO DIRETA
+    const matchAjusteDesc = textoMensagem.match(/(?:descrição|descricao|mudar? descrição|alterar? descrição|nome da despesa|nome da receita)\s*(?:para|pra|:)\s*(.+)/i);
+    if (rascunhoAtivo && matchAjusteDesc && !fotoComprovanteUrl) {
+      dadosRascunhoAtivo.descricao = matchAjusteDesc[1].trim();
+      await db.query(
+        `UPDATE whatsapp_ia_rascunhos SET dados_json = ?, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(dadosRascunhoAtivo), rascunhoAtivo.id]
+      );
+
+      const dataFmt = new Date((toDateSQL(dadosRascunhoAtivo.data_vencimento) || snapshot.hojeIso) + "T00:00:00Z").toLocaleDateString("pt-BR", { timeZone: "UTC" });
+      const textoProposta = `📋 *Confirmar este lançamento?*\n\n` +
+        `• *Tipo:* ${dadosRascunhoAtivo.tipo === 'receita' ? 'Receita 🟢' : 'Despesa 🔴'}\n` +
+        `• *Descrição:* ${dadosRascunhoAtivo.descricao} ✨ _(atualizada!)_\n` +
+        `• *Valor:* ${formatBRL(dadosRascunhoAtivo.valor)}\n` +
+        `• *Data:* ${dataFmt}\n` +
+        `• *Categoria:* ${dadosRascunhoAtivo.categoria_nome}\n` +
+        `${dadosRascunhoAtivo.pagador ? `• *Pagador:* 👤 ${dadosRascunhoAtivo.pagador}\n` : ''}` +
+        `${dadosRascunhoAtivo.recebedor ? `• *Recebedor:* 🏢 ${dadosRascunhoAtivo.recebedor}\n` : (dadosRascunhoAtivo.contato_nome ? `• *${dadosRascunhoAtivo.tipo === 'receita' ? 'Cliente / Pagador' : 'Fornecedor'}:* 👤 ${dadosRascunhoAtivo.contato_nome}\n` : '')}` +
+        `• *Conta Bancária:* 💳 ${dadosRascunhoAtivo.conta_nome || 'Conta Principal'}\n` +
+        `• *Status:* ${dadosRascunhoAtivo.status === 'pago' ? (dadosRascunhoAtivo.tipo === 'receita' ? 'Recebido ✅' : 'Pago ✅') : 'Pendente ⏰'}\n` +
+        `${dadosRascunhoAtivo.comprovante_url ? '• *Comprovante:* 📎 Anexo vinculado!\n' : ''}\n` +
+        `Clique abaixo para confirmar ou ajustar:`;
+
+      const botoes = [
+        [
+          { text: "✅ Sim, Confirmar e Salvar", callback_data: "confirmar_lancamento" },
+          { text: "❌ Ajustar", callback_data: "cancelar_lancamento" },
+        ],
+      ];
+
+      await enviarBotoesTelegram(cleanChatId, textoProposta, botoes);
+      try {
+        await db.query(
+          `INSERT INTO whatsapp_mensagens_historico (empresa_id, admin_id, telefone, papel, conteudo) VALUES (?, ?, ?, 'assistant', ?)`,
+          [empresaId, admin.id, cleanChatId, textoProposta]
+        );
+      } catch (e) { }
+      return;
+    }
+
     // SE TEM RASCUNHO PRONTO E O USUÁRIO CONFIRMOU DIRETAMENTE
     if (isRascunhoPronto && isAfirmativa) {
       let dados = dadosRascunhoAtivo;
@@ -687,6 +831,8 @@ const processarWebhookTelegram = async (req, res) => {
         const isUpdate = (dados.acao === "update_transaction" || (tId && tId > 0));
         const numParcelas = parseInt(dados.parcelas || 1) || 1;
 
+        let primeiroIdInserido = null;
+
         if (isUpdate && tId) {
           // 1. ATUALIZAÇÃO / BAIXA DE TRANSAÇÃO EXISTENTE (UPDATE)
           const [oldRows] = await connection.query(
@@ -759,7 +905,7 @@ const processarWebhookTelegram = async (req, res) => {
             return newDate.toISOString().substring(0, 10);
           };
 
-          let primeiroIdInserido = null;
+          primeiroIdInserido = null;
           for (let p = 1; p <= numParcelas; p++) {
             const dataVencP = numParcelas > 1 ? addMonths(dataVenc, p - 1) : dataVenc;
             const descP = numParcelas > 1
