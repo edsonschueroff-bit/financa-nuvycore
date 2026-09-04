@@ -167,6 +167,22 @@ const coraTools = [
             type: "string",
             description: "CNPJ ou CPF do estabelecimento ou pagador se identificado no comprovante ou texto.",
           },
+          pagador: {
+            type: "string",
+            description: "Nome completo da pessoa ou empresa que pagou (origem do recurso).",
+          },
+          recebedor: {
+            type: "string",
+            description: "Nome completo da pessoa ou empresa que recebeu o pagamento (favorecido/destino).",
+          },
+          banco_origem: {
+            type: "string",
+            description: "Nome da instituição financeira ou banco do pagador (ex: 'Nubank', 'Bradesco', 'Itaú', 'Inter', 'Banco do Brasil').",
+          },
+          banco_destino: {
+            type: "string",
+            description: "Nome da instituição financeira ou banco do recebedor (ex: 'Nubank', 'Bradesco', 'Itaú', 'Inter').",
+          },
           data_vencimento: { type: "string", description: "Formato AAAA-MM-DD" },
           status_pagamento: {
             type: "string",
@@ -179,7 +195,7 @@ const coraTools = [
           },
           conta_bancaria: {
             type: "string",
-            description: "Opcional. Nome da conta bancária de liquidação.",
+            description: "CRÍTICO: Nome da conta bancária de liquidação da empresa (ex: 'NUBANK MOVIMENTACAO', 'BRADESCO RECEBER', 'Conta Principal / Caixa'). Identifique o banco emissor no comprovante ou na mensagem do usuário.",
           },
           parcelas: {
             type: "integer",
@@ -204,6 +220,9 @@ const coraTools = [
           valor: { type: "number" },
           categoria: { type: "string" },
           contato_nome: { type: "string" },
+          pagador: { type: "string" },
+          recebedor: { type: "string" },
+          conta_bancaria: { type: "string", description: "Nome da conta bancária de liquidação (ex: 'NUBANK MOVIMENTACAO', 'BRADESCO RECEBER')" },
           data_vencimento: { type: "string" },
           status_pagamento: { type: "string", enum: ["pendente", "pago", "recebido"] },
         },
@@ -395,23 +414,50 @@ Sempre formate as respostas e resumos financeiros utilizando esta padronização
      Se houver uma prévia pendente e o usuário disser 'categoria transporte', 'muda para transporte', 'categoria alimentação', etc.:
      Você DEVE chamar edit_entry ou create_entry atualizando a categoria imediatamente para a categoria solicitada pelo gestor!
 
-5. IDENTIFICAÇÃO E CADASTRO AUTOMÁTICO DE CLIENTES / FORNECEDORES:
-   - Sempre que identificar no comprovante ou na mensagem o nome da empresa, loja, cliente ou pessoa (ex: 'Hokinet', 'Enel', 'Carrefour', 'Posto Ipiranga', 'Carlos Eduardo'):
-   - Preencha o parâmetro contato_nome com esse nome! O backend cuidará de vincular ou cadastrar esse contato automaticamente na tabela de Contatos do sistema.
+5. IDENTIFICAÇÃO DE PAGADOR E RECEBEDOR (DUAS PONTAS):
+   - Todo comprovante ou transação possui duas partes:
+     • PAGADOR (Origem): Quem desembolsou o dinheiro (Nome e CPF/CNPJ se visível).
+     • RECEBEDOR / FAVORECIDO (Destino): Quem recebeu o dinheiro (Nome e CPF/CNPJ se visível).
+   - REGRAS DE ATRIBUIÇÃO NO SISTEMA:
+     • Se for DESPESA (o titular realizou o pagamento para terceiro):
+       O contato_nome DEVE ser o RECEBEDOR / FAVORECIDO (a loja, posto, fornecedor ou pessoa que recebeu o dinheiro).
+     • Se for RECEITA (o cliente/terceiro pagou o titular):
+       O contato_nome DEVE ser o PAGADOR (o cliente ou empresa que enviou o dinheiro).
+   - Sempre preencha ambos os campos: pagador e recebedor nas tools create_entry e edit_entry!
+   - Na prévia exibida ao gestor, detalhe com clareza:
+     • Pagador: [Nome do Pagador]
+     • Recebedor: [Nome do Recebedor]
 
-6. DESCRIÇÃO LIMPA E PROFISSIONAL:
+6. IDENTIFICAÇÃO E SELEÇÃO DE CONTA BANCÁRIA (CRÍTICO):
+   - Analise ATIVAMENTE no comprovante ou na mensagem a INSTITUIÇÃO FINANCEIRA / BANCO:
+     • Se for DESPESA: localize o Banco Pagador / Emissor (de onde o dinheiro saiu).
+     • Se for RECEITA: localize o Banco Recebedor / Destino (onde o dinheiro entrou).
+   - MAPEAMENTO PARA CONTAS DA EMPRESA:
+     Compare o banco identificado com a lista de contas bancárias cadastradas no snapshot:
+${contasTexto}
+     • Se o comprovante for do Nubank / Nu Pagamentos ➔ defina conta_bancaria como a conta Nubank da empresa.
+     • Se for do Bradesco ➔ defina conta_bancaria como a conta Bradesco da empresa.
+     • Se o usuário disser 'paguei no nubank', 'saiu do bradesco', 'caiu no itaú' ➔ selecione a conta mencionada!
+   - E SE NÃO FOR POSSÍVEL IDENTIFICAR O BANCO?
+     • Se a empresa tiver mais de uma conta e o comprovante ou mensagem não indicar o banco:
+       Defina conta_bancaria com a conta mais provável (ou a primeira da lista) e na prévia deixe CLARÍSSIMO:
+       '• Conta Bancária: [Nome da Conta] 💳 (Sugerida — se preferir outra conta como Nubank ou Bradesco, basta me avisar que eu troco!)'
+     • Se o usuário disser 'muda pro nubank', 'foi no bradesco', 'conta nubank':
+       Chame imediatamente edit_entry com a nova conta_bancaria solicitada!
+
+7. DESCRIÇÃO LIMPA E PROFISSIONAL:
    - O campo descricao deve ser curto, claro e elegante (ex: 'Salário - Hokinet', 'Conta de Luz - Enel', 'Supermercado Carrefour').
    - NUNCA use a frase inteira dita pelo usuário (ex: JAMAIS coloque 'Novo valor eh de 2.493,97 e já recebi hj' como descrição).
 
-7. FOTOS DE COMPROVANTES E NOTAS FISCAIS:
+8. FOTOS DE COMPROVANTES E NOTAS FISCAIS:
    - Ao receber foto ou OCR de comprovante já quitado (PIX enviado/recebido, cupom de máquina de cartão, recibo pago):
    - Defina status_pagamento: 'pago' (se despesa) ou 'recebido' (se receita) e data_pagamento de hoje (${snapshot.hojeIso}) ou a data impressa.
-   - Extraia o valor exato, o favorecido/pagador (contato_nome) e deduza a categoria automaticamente.
+   - Extraia o valor exato, o favorecido e o pagador, o banco emissor e deduza a categoria automaticamente.
 
-8. GERAÇÃO DE RECIBOS EM PDF:
+9. GERAÇÃO DE RECIBOS EM PDF:
    - Se o gestor pedir recibo ('gera o recibo', 'quero o comprovante em PDF'): chame generate_receipt com o transacao_id correspondente.
 
-9. RECUPERAÇÃO DE SENHA DO PAINEL WEB:
+10. RECUPERAÇÃO DE SENHA DO PAINEL WEB:
    - Se o gestor pedir redefinição de senha: chame request_password_reset.
 
 ═══════════════════════════════════════

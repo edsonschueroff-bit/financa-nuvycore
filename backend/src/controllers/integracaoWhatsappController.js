@@ -44,6 +44,37 @@ async function enviarTextoWhatsApp(numero, texto, instanceName = INSTANCIA_PADRA
   }
 }
 
+/**
+ * Mapeia de forma resiliente termos, nomes de bancos e instituições financeiras para uma conta da empresa
+ */
+const identificarContaBancaria = (texto, contas) => {
+  if (!contas || contas.length === 0) return null;
+  if (!texto) return null;
+  const str = String(texto).toLowerCase();
+
+  for (const c of contas) {
+    const nome = (c.nome || "").toLowerCase();
+    const banco = (c.banco || "").toLowerCase();
+
+    // Match direto em nome ou banco
+    if (str.includes(nome) || (banco && str.includes(banco))) return c;
+
+    // Aliases bancários brasileiros comuns
+    if ((str.includes("nubank") || str.includes("nu ") || str.includes("nu_") || str.includes("nu pagamentos")) && (nome.includes("nu") || banco.includes("nu"))) return c;
+    if (str.includes("bradesco") && (nome.includes("bradesco") || banco.includes("bradesco"))) return c;
+    if (str.includes("itau") && (nome.includes("itau") || banco.includes("itau"))) return c;
+    if (str.includes("inter") && (nome.includes("inter") || banco.includes("inter"))) return c;
+    if ((str.includes("banco do brasil") || str.includes("bb")) && (nome.includes("brasil") || banco.includes("brasil") || nome.includes("bb"))) return c;
+    if (str.includes("santander") && (nome.includes("santander") || banco.includes("santander"))) return c;
+    if (str.includes("caixa") && (nome.includes("caixa") || banco.includes("caixa"))) return c;
+    if (str.includes("sicredi") && (nome.includes("sicredi") || banco.includes("sicredi"))) return c;
+    if (str.includes("sicoob") && (nome.includes("sicoob") || banco.includes("sicoob"))) return c;
+    if (str.includes("mercado pago") && (nome.includes("mercado") || banco.includes("mercado"))) return c;
+    if (str.includes("cora") && (nome.includes("cora") || banco.includes("cora"))) return c;
+  }
+  return null;
+};
+
 // Função utilitária para normalizar e encontrar usuário por telefone
 async function encontrarAdminPorTelefone(telefoneBruto) {
   if (!telefoneBruto) return null;
@@ -163,6 +194,16 @@ ${categorias.map(c => `- ID ${c.id}: ${c.nome} (${c.tipo})`).join("\n")}
 Contas Bancárias da empresa:
 ${contas.map(c => `- ID ${c.id}: ${c.nome} (${c.banco})`).join("\n")}
 
+REGRA CRÍTICA PARA CONTA BANCÁRIA (INSTITUIÇÃO FINANCEIRA):
+- Olhe o cabeçalho, logotipo ou campos 'Instituição de Origem / Pagador' (se despesa) ou 'Instituição de Destino / Recebedor' (se receita).
+- Identifique o banco do documento (ex: Nubank / Nu Pagamentos S.A., Bradesco, Itaú, Banco do Brasil, Inter, Santander, Caixa, Sicredi, Sicoob, etc.).
+- Associe imediatamente ao ID e Nome da conta bancária correspondente da empresa acima.
+
+REGRA CRÍTICA PARA IDENTIFICAÇÃO DE PARTES:
+- 'pagador': Nome completo e CPF/CNPJ de quem realizou o pagamento.
+- 'recebedor': Nome completo e CPF/CNPJ de quem recebeu o valor (Favorecido).
+- Se for despesa da empresa: o contato principal é o recebedor. Se for receita: o contato principal é o pagador.
+
 INSTRUÇÃO DE RESPOSTA:
 Responda ESTRITAMENTE em formato JSON válido, sem qualquer texto ou formatação adicional fora do JSON:
 {
@@ -172,11 +213,16 @@ Responda ESTRITAMENTE em formato JSON válido, sem qualquer texto ou formataçã
   "valor": 123.45,
   "data_pagamento": "YYYY-MM-DD",
   "data_vencimento": "YYYY-MM-DD",
-  "beneficiario_ou_pagador": "Nome ou Razão Social identificado no documento",
+  "pagador": "Nome completo de quem pagou",
+  "recebedor": "Nome completo de quem recebeu",
+  "beneficiario_ou_pagador": "Nome do contato principal",
+  "banco_origem": "Nome do banco de onde saiu o dinheiro",
+  "banco_destino": "Nome do banco para onde o dinheiro foi",
   "forma_pagamento": "pix" | "boleto" | "cartao_credito" | "cartao_debito" | "transferencia" | "dinheiro",
   "categoria_id": 10,
   "categoria_nome": "Nome da Categoria",
   "conta_id": 2,
+  "conta_nome": "Nome exato da Conta Bancária correspondente",
   "documento_numero": "Código de autenticação, ID da transação PIX ou Nº do Cupom",
   "status": "pago",
   "resumo": "Explicação amigável em português do que foi identificado no comprovante."
@@ -1508,19 +1554,24 @@ Responda SEMPRE em JSON válido, sem texto fora do JSON, no formato:
           catNome = defaultCat.nome;
         }
 
-        let contaId = null;
-        let contaNome = p.conta_nome || (contas[0] ? contas[0].nome : "Conta Padrão");
-        if (p.conta_nome) {
-          const contaFound = contas.find(c => c.nome.toLowerCase().includes(p.conta_nome.toLowerCase()) || (c.banco && c.banco.toLowerCase().includes(p.conta_nome.toLowerCase())));
-          if (contaFound) {
-            contaId = contaFound.id;
-            contaNome = contaFound.nome;
-          }
-        }
+        const termoBuscaConta = [
+          p.conta_nome,
+          p.conta_bancaria,
+          p.banco_origem,
+          p.banco_destino,
+          mensagem
+        ].filter(Boolean).join(" ");
+        const contaMatched = identificarContaBancaria(termoBuscaConta, contas);
+        let contaId = contaMatched?.id || null;
+        let contaNome = contaMatched?.nome || null;
+
         if (!contaId && contas.length > 0) {
           contaId = contas[0].id;
           contaNome = contas[0].nome;
         }
+
+        const pagadorFinal = p.pagador || null;
+        const recebedorFinal = p.recebedor || p.beneficiario_ou_pagador || null;
 
         // [FIX BUG 3] Busca por nome/descrição em transações pendentes
         // Ex: "pagou o maui", "pagamento do maui" → encontra Maui (1/11) pendente
@@ -1555,8 +1606,11 @@ Responda SEMPRE em JSON válido, sem texto fora do JSON, no formato:
           total_parcelas: (transacaoIdSmartMatch || isDeleteAction) ? 1 : (parseInt(p.total_parcelas, 10) || 1),
           categoria_id: catId,
           categoria_nome: catNome,
+          pagador: pagadorFinal,
+          recebedor: recebedorFinal,
           conta_id: contaId,
           conta_nome: contaNome,
+          conta_identificada: Boolean(contaMatched),
           status: p.status || (p.data_vencimento > hojeIso ? "pendente" : "pago"),
         };
 
