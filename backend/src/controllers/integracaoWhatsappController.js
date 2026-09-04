@@ -179,13 +179,16 @@ async function analisarComprovanteVision(imageBase64, legenda = "", admin, empre
     : `data:image/jpeg;base64,${imageBase64}`;
 
   const promptSystem = `Você é um especialista em OCR e auditoria financeira de comprovantes bancários do Brasil (PIX, TED/DOC, boletos pagos, recibos, cupons fiscais e notas fiscais).
-REGRA CRÍTICA DE CLASSIFICAÇÃO (RECEITA vs DESPESA):
-1. RECEITA (Entrada de Dinheiro):
-   - O comprovante diz 'Comprovante de PIX Recebido', 'Você recebeu um PIX', 'Transferência Recebida'; OU
-   - O Favorecido/Destinatário do Pix é a empresa ${admin.emp_nome} ou o titular ${admin.nome} (comprovante enviado pelo cliente provando o pagamento); OU
-   - A legenda enviada pelo usuário diz que se trata de recebimento ou venda.
-2. DESPESA (Saída de Dinheiro):
-   - O documento é um 'Comprovante de Transferência PIX', 'Pagamento de Boleto', 'Comprovante de Pagamento' onde o titular realizou um pagamento para um terceiro externo (Favorecido).
+REGRA DE OURO ABSOLUTA DE CLASSIFICAÇÃO (RECEITA vs DESPESA):
+1. RECEITA (Entrada de Dinheiro na conta do Titular/Empresa):
+   - Se o Favorecido / Destinatário / Recebedor do Pix for a empresa ${admin.emp_nome} ou o titular ${admin.nome} (ou nome/CPF correspondente): É SEMPRE UMA RECEITA 🟢!
+   - ATENÇÃO CRÍTICA: Muitas vezes o comprovante é um print do banco do cliente e diz 'Pix Enviado', 'Comprovante BB', 'Comprovante Santander' porque saiu da conta dele. Mas se quem RECEBEU foi o titular (${admin.nome}) ou a empresa (${admin.emp_nome}), para nós É OBRIGATORIAMENTE UMA RECEITA!
+   - A conta bancária a ser associada é a conta da empresa correspondente ao banco de destino onde o dinheiro entrou (ex: Nubank / Nu Pagamentos).
+   - O Pagador (cliente) é o contato principal.
+2. DESPESA (Saída de Dinheiro da conta do Titular/Empresa):
+   - Se o Pagador / Remetente for o titular (${admin.nome}) ou a empresa (${admin.emp_nome}): É UMA DESPESA 🔴.
+   - A conta bancária a ser associada é a de onde o dinheiro saiu (banco de origem).
+   - O Favorecido/Recebedor é o contato principal.
 Analise a imagem com atenção máxima aos detalhes e extraia os dados para lançamento financeiro.
 
 Categorias disponíveis da empresa:
