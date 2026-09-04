@@ -68,7 +68,10 @@ export default function FluxoCaixaProjetado() {
   };
 
   const r = data?.resumo;
-  const curva = data?.curva_diaria || [];
+  const curva = (data?.curva_diaria || []).map((d) => ({
+    ...d,
+    data_formatada: d.data_formatada || (d.data ? `${d.data.split("-")[2]}/${d.data.split("-")[1]}` : ""),
+  }));
   const semanas = data?.semanas || [];
 
   const handleExportExcel = () => {
@@ -117,7 +120,14 @@ export default function FluxoCaixaProjetado() {
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="data_formatada" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} stroke="#94a3b8" />
-            <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={10} stroke="#94a3b8" tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              fontSize={10}
+              stroke="#94a3b8"
+              tickFormatter={(v) => Math.abs(v) >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`}
+            />
             <ChartTooltip
               content={
                 <ChartTooltipContent

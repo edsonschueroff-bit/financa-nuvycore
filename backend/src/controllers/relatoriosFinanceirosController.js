@@ -551,9 +551,13 @@ const fluxoCaixaProjetado = async (req, res) => {
         });
       }
 
+      const diaStr = String(dataCursor.getDate()).padStart(2, "0");
+      const mesStr = String(dataCursor.getMonth() + 1).padStart(2, "0");
+
       curvaDiaria.push({
         dia_indice: i,
         data: dataIso,
+        data_formatada: `${diaStr}/${mesStr}`,
         dia_semana: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][dataCursor.getDay()],
         entradas,
         saidas,
