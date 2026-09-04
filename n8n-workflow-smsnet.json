@@ -1,0 +1,143 @@
+{
+  "name": "Nuvy Finance - Automações & Régua de Cobrança SMSNET",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "c1f72839-81a2-4a7b-a19e-9d8a7c2b3e4f",
+      "name": "Cron - 09:00 Dias Úteis",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smsnet-disparar",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "e4f8192a-3b5c-4d7e-9f1a-2c3d4e5f6a7b",
+      "name": "Webhook Inbound n8n - SMSNET",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "webhookId": "smsnet-disparar"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3005/api/integracao-whatsapp/cobrancas/disparar-regua",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-nuvy-integracao-key",
+              "value": "nuvy_wh_9a8b1c4e7f290d238a9d18721c0e69830da"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "canal",
+              "value": "sms"
+            },
+            {
+              "name": "enviar_sms",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f8a92b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c",
+      "name": "Executar Régua SMSNET (Backend)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3005/api/integracao-whatsapp/disparar-sms",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-nuvy-integracao-key",
+              "value": "nuvy_wh_9a8b1c4e7f290d238a9d18721c0e69830da"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"telefone\": \"{{ $json.body.telefone || $json.body.number }}\",\n  \"mensagem\": \"{{ $json.body.mensagem || $json.body.msg }}\"\n}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Disparar SMS via SMSNET",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        480
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron - 09:00 Dias Úteis": {
+      "main": [
+        [
+          {
+            "node": "Executar Régua SMSNET (Backend)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Inbound n8n - SMSNET": {
+      "main": [
+        [
+          {
+            "node": "Disparar SMS via SMSNET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

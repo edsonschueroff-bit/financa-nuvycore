@@ -1,0 +1,67 @@
+{
+  "name": "Nuvy Finance - Resumo Matinal Geral (Cron 08h30)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Cron 08h30 Seg-Sex",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "id": "schedule-trigger-matinal"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:3005/api/integracoes/whatsapp/resumo-matinal/disparar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Nuvy-Integracao-Key",
+              "value": "nuvy_wh_9a8b1c4e7f290d238a9d18721c0e69830da"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "name": "Disparar Resumo Matinal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "id": "post-resumo-matinal"
+    }
+  ],
+  "connections": {
+    "Cron 08h30 Seg-Sex": {
+      "main": [
+        [
+          {
+            "node": "Disparar Resumo Matinal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

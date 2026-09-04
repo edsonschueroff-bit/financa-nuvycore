@@ -1,0 +1,37 @@
+[
+  {
+    "id": "TC001",
+    "title": "test_authentication_and_tenant_isolation",
+    "description": "Verify that POST /api/auth/login with valid tenant user credentials returns a JWT token scoped to the correct empresa_id, and that GET /api/profile with this token returns the user profile limited to the tenant context. Also verify invalid login attempts return 401 and rate limiting is enforced after repeated failures."
+  },
+  {
+    "id": "TC002",
+    "title": "test_financial_transactions_crud_and_batch_operations",
+    "description": "Test creating accounts payable and receivable transactions via POST /api/transacoes with valid payloads, retrieving them with GET /api/transacoes/:id, updating with PUT, and deleting with DELETE. Verify batch liquidation via POST /api/transacoes/baixarEmLote and batch deletion via POST /api/transacoes/deletarLote work correctly and update transaction statuses accordingly."
+  },
+  {
+    "id": "TC003",
+    "title": "test_bank_statement_csv_import_and_reconciliation",
+    "description": "Validate POST /api/open-finance/import accepts supported bank CSV files, parses them, and returns reconciliation candidates. Confirm duplicate CSV uploads return 409 error. Verify reconciliation results via GET /api/open-finance/reconciliacao show matched and unmatched entries, and unsupported or corrupted CSVs return 400 parse errors."
+  },
+  {
+    "id": "TC004",
+    "title": "test_financial_reports_dre_and_cash_flow",
+    "description": "Ensure GET /api/relatorios/dre and /api/relatorios/fluxo-caixa endpoints return correct DRE Gerencial and projected cash flow reports for valid empresa_id and horizons. Confirm unauthorized or invalid tenant access returns 401 or 403. Verify reports handle empty data gracefully with zeroed or empty results."
+  },
+  {
+    "id": "TC005",
+    "title": "test_investments_portfolio_tracking_endpoints",
+    "description": "Test GET /api/investimentos/carteira and /api/investimentos/rendimentos return current portfolio and yield data with valid JWT. Validate POST /api/investimentos/carteira creates new asset positions and GET /api/investimentos/carteira/:id returns details. Confirm invalid tokens or payloads return 401 or 400 errors."
+  },
+  {
+    "id": "TC006",
+    "title": "test_cora_financial_copilot_messaging_endpoints",
+    "description": "Verify POST /api/cora/webhook/telegram and /api/cora/webhook/whatsapp accept messages and respond with 200. Test POST /api/cora/transcribe processes audio payloads and returns transcription, and POST /api/cora/ocr parses receipt images. Confirm error handling for unsupported media or invalid receipt data returns appropriate 400 or 422 errors. Validate POST /api/cora/receipt-pdf generates official PDF receipts with valid data."
+  },
+  {
+    "id": "TC007",
+    "title": "test_saas_administration_and_billing_endpoints",
+    "description": "Check GET /api/super/empresas, /api/super/planos, and /api/super/faturas return lists with super admin JWT. Test creating and updating tenant companies via POST and PUT /api/super/empresas. Confirm access control denies non-super-admin users with 403. Validate billing data validation on POST /api/super/faturas returns 400 for invalid inputs."
+  }
+]
