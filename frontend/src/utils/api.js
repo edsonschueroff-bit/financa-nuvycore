@@ -1,7 +1,18 @@
 import axios from "axios";
 
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host.includes("vercel.app") || host.includes("nuvycore.online")) {
+      return "https://financas.nuvycore.online/api";
+    }
+  }
+  return "http://localhost:3005/api";
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3005/api",
+  baseURL: getBaseUrl(),
   timeout: 30000,
 });
 
