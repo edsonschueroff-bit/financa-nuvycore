@@ -47,7 +47,7 @@ export default function SuperComunicados() {
       const [comRes, empRes, planRes] = await Promise.all([
         api.get("/comunicados/admin"),
         api.get("/empresas/todas"),
-        api.get("/saas/planos"),
+        api.get("/saas-planos"),
       ]);
       setComunicados(comRes.data?.comunicados || []);
       setEmpresas(Array.isArray(empRes.data) ? empRes.data : []);

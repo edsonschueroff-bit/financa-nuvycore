@@ -70,7 +70,10 @@ app.use(
       // Permite requisições sem origin (ex: webhooks server-to-server, curl interno, apps móveis)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app")
+      ) {
         return callback(null, true);
       }
 
@@ -130,7 +133,9 @@ app.use("/api/contatos", contatoRoutes);
 app.use("/api/relatorios", relatorioRoutes);
 app.use("/api/empresas", empresaRoutes);
 app.use("/api/saas-planos", saasPlanoRoutes);
+app.use("/api/saas/planos", saasPlanoRoutes);
 app.use("/api/saas-faturas", saasFaturaRoutes);
+app.use("/api/saas/faturas", saasFaturaRoutes);
 app.use("/api/branding", brandingRoutes);
 app.use("/api/openfinance", openfinanceRoutes);
 app.use("/api/conciliacao", conciliacaoRoutes);
