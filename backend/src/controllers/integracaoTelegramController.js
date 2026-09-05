@@ -853,11 +853,12 @@ const processarWebhookTelegram = async (req, res) => {
             }
 
             // Atualizar os dados da transação existente
+            const contatoFinalId = dados.contato_id !== undefined ? dados.contato_id : (oldT.contato_id || null);
             await connection.query(
               `UPDATE transacoes_financeiras SET 
                  conta_bancaria_id = COALESCE(?, conta_bancaria_id),
                  categoria_id = COALESCE(?, categoria_id),
-                 contato_id = COALESCE(?, contato_id),
+                 contato_id = ?,
                  tipo = COALESCE(?, tipo),
                  descricao = COALESCE(?, descricao),
                  valor = ?,
@@ -870,7 +871,7 @@ const processarWebhookTelegram = async (req, res) => {
               [
                 contaId,
                 catId,
-                dados.contato_id || oldT.contato_id || null,
+                contatoFinalId,
                 dados.tipo || oldT.tipo,
                 dados.descricao || oldT.descricao,
                 valorNum || oldT.valor,
@@ -1393,10 +1394,27 @@ const processarWebhookTelegram = async (req, res) => {
           }
 
           // 5. Determinar Contato (Cliente ou Fornecedor) e Auto-cadastrar se novo
-          let contatoId = transacaoAlvo?.contato_id || rascunhoBase.contato_id || null;
-          let contatoNome = args.contato_nome || transacaoAlvo?.contato_nome || rascunhoBase.contato_nome || null;
+          let contatoId = null;
+          let contatoNome = null;
 
-          if (!contatoNome) {
+          if (args.contato_nome !== undefined && args.contato_nome !== null && args.contato_nome.trim() !== "") {
+            const rawContato = args.contato_nome.trim();
+            // Se o usuário pediu para deixar desconhecido, sem fornecedor ou anônimo
+            if (/^(desconhecido|nenhum|não informado|nao informado|sem fornecedor|sem contato|ninguém|ninguem)$/i.test(rawContato)) {
+              contatoNome = null;
+              contatoId = null;
+            } else {
+              contatoNome = rawContato;
+              // Reset do contatoId para não herdar o ID do fornecedor do rascunho anterior
+              contatoId = null;
+            }
+          } else {
+            // Se a IA não passou um novo contato, herda da transação alvo ou do rascunho anterior
+            contatoNome = transacaoAlvo?.contato_nome || rascunhoBase.contato_nome || null;
+            contatoId = transacaoAlvo?.contato_id || rascunhoBase.contato_id || null;
+          }
+
+          if (!contatoNome && !contatoId) {
             const matchEstabelecimento = textoMensagem.match(/\b(hokinet|enel|copel|sabesp|carrefour|ipiranga|vivo|claro|uber|ifood)\b/i);
             if (matchEstabelecimento) {
               contatoNome = matchEstabelecimento[0].charAt(0).toUpperCase() + matchEstabelecimento[0].slice(1).toLowerCase();

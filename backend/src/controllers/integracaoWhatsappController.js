@@ -761,11 +761,11 @@ const processarMensagemIA = async (req, res) => {
       console.error("Erro ao registrar histórico da mensagem do usuário:", hErr);
     }
 
-    // 1. Verificar se existe um rascunho de confirmação pendente para este usuário (últimos 30 minutos)
+    // 1. Verificar se existe um rascunho de confirmação pendente para este usuário (últimos 10 minutos)
     const [rascunhos] = await db.query(
       `SELECT * FROM whatsapp_ia_rascunhos 
        WHERE (admin_id = ? OR telefone LIKE ?) 
-         AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) <= 30
+         AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) <= 10
        ORDER BY id DESC LIMIT 1`,
       [admin.id, `%${cleanNum.slice(-8)}%`]
     );
@@ -1043,6 +1043,15 @@ const processarMensagemIA = async (req, res) => {
       return res.json({ sucesso: true, resposta: respCancelado });
     }
 
+    // Se havia rascunho pendente e o usuário não respondeu nem sim nem não (mudou de assunto ou deu novo comando),
+    // descarta o rascunho anterior para não deixar lixo preso que causaria conflito em mensagens futuras
+    if (rascunhoAtivo && !isAfirmativa && !isNegativa) {
+      console.log(`[WHATSAPP RASCUNHO] Usuário ${cleanNum} enviou novo comando sem confirmar. Rascunho anterior #${rascunhoAtivo.id} descartado.`);
+      try {
+        await db.query(`DELETE FROM whatsapp_ia_rascunhos WHERE id = ?`, [rascunhoAtivo.id]);
+      } catch (e) { }
+    }
+
     // ── INTERCEPTADOR DIRETO: PEDIDO DE EXCLUSÃO NO WHATSAPP ──
     const matchExclusaoDiretaZap = msgLimpa.match(/(?:quero que voc[eê]\s+)?(?:exclui[ar]?|apaga[ar]?|delet[ar]?|remover?)\s*(.*)/i);
     if (!rascunhoAtivo && matchExclusaoDiretaZap) {
@@ -1141,12 +1150,12 @@ const processarMensagemIA = async (req, res) => {
       }
     }
 
-    // 2. Buscar Histórico Recente de Conversas dos Últimos 30 Minutos (Últimas 6 Mensagens)
+    // 2. Buscar Histórico Recente de Conversas (Últimas 12 Mensagens / 24 Horas)
     const [historicoRecente] = await db.query(
       `SELECT papel, conteudo FROM whatsapp_mensagens_historico 
        WHERE (admin_id = ? OR telefone LIKE ?)
-         AND created_at >= NOW() - INTERVAL 30 MINUTE
-       ORDER BY id DESC LIMIT 6`,
+         AND created_at >= NOW() - INTERVAL 24 HOUR
+       ORDER BY id DESC LIMIT 12`,
       [admin.id, `%${cleanNum.slice(-8)}%`]
     );
 
@@ -1991,6 +2000,19 @@ const processarMidiaMensagem = async (req, res) => {
           `_Copiloto Financeiro Nuvy Finance_ 🤖`;
 
         await enviarTextoWhatsApp(cleanNum, msgConfirmacao, instance);
+
+        try {
+          await db.query(
+            `INSERT INTO whatsapp_mensagens_historico (empresa_id, admin_id, telefone, papel, conteudo) 
+             VALUES (?, ?, ?, 'user', ?), (?, ?, ?, 'assistant', ?)`,
+            [
+              empresaId, admin.id, cleanNum, `[Comprovante enviado]: ${ocrData.descricao || 'Comprovante'} no valor de ${formatBRL(ocrData.valor)} (${ocrData.beneficiario_ou_pagador || 'Pagamento'})`,
+              empresaId, admin.id, cleanNum, msgConfirmacao
+            ]
+          );
+        } catch (hErr) {
+          console.error("Erro ao registrar histórico de imagem:", hErr);
+        }
 
         return res.json({
           sucesso: true,

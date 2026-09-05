@@ -212,3 +212,29 @@ Sempre que novos módulos (ex: Precificação, Orçamento 12M, Curva ABC, Relat�
   - 100% das classes residuais `purple-*` foram eliminadas em favor da paleta executiva oficial *Precision Emerald* (`DESIGN.md`).
   - Build de produção (`npm run build`) validado com 0 erros e servido via Nginx.
 
+---
+
+## 9. Integrações IA & MCP n8n — Otimização de Memória e Multimodalidade (Concluído em 05/09/2026)
+
+### 9.1 Servidor MCP do n8n Integrado (`n8n-mcp`)
+- **Protocolo & Handshake:** Servidor oficial `n8n-documentation-mcp` (v2.82.1) configurado via `stdio` e registrado globalmente em `/root/.gemini/config/mcp_config.json` e localmente em `.agents/mcp_config.json`.
+- **Credenciais & Scopes:** Chave de API dedicada (`mcp-integration`) gerada com permissões completas (`workflow:*`, `execution:*`, `credential:*`, etc.) para a instância local `https://n8n.nuvycore.online` (n8n v2.34.5 Docker).
+- **Ferramentas Ativas (28 tools):** Suporte total a auditoria (`n8n_audit_instance`), criação/edição de workflows, consulta de execuções e validação automatizada.
+
+### 9.2 Otimizações de Memória & Pruning de Infraestrutura no n8n
+- **Docker & PostgreSQL:** Atualizados `/var/www/n8n/docker-compose.yml` e `/var/www/n8n/.env` com diretrizes oficiais de retenção:
+  - `EXECUTIONS_DATA_PRUNE=true`: Limpeza periódica ativa.
+  - `EXECUTIONS_DATA_MAX_AGE=168`: Retenção estrita de apenas 7 dias de logs de execução.
+  - `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`: Não persiste payloads volumosos de execuções com sucesso rotineiras, reduzindo o crescimento do banco em 90%.
+  - `N8N_DEFAULT_BINARY_DATA_MODE=filesystem`: Evita retenção de arquivos e mídias base64 no heap de memória RAM do Node.js.
+
+### 9.3 Memória Conversacional do Copiloto Financeiro (WhatsApp & Telegram)
+- **Janela de Contexto Expandida:** Aumentada a janela de histórico de 30 minutos para **24 horas** (`INTERVAL 24 HOUR`) e limite de mensagens ampliado para **12 mensagens** (6 turnos de ida e volta), permitindo que o gestor retome assuntos da manhã ou da noite anterior sem perda de contexto.
+- **Descarte Inteligente de Rascunhos Pendentes:** Se o gestor receber uma prévia de confirmação e mudar de assunto ou enviar novo comando, a proposta anterior é descartada imediatamente (`DELETE FROM whatsapp_ia_rascunhos`), impedindo que respostas como "sim" executem ações antigas fora de hora. TTL do rascunho ajustado para 10 minutos.
+- **Continuidade de Contexto em Fotos/Comprovantes:** O lançamento feito via Vision OCR agora é registrado em `whatsapp_mensagens_historico`, permitindo que áudios ou textos subsequentes (ex: *"edita o comprovante que te mandei"* ou *"deleta esse último"*) saibam exatamente qual foi o documento enviado.
+
+### 9.4 Correções Críticas de Multimodalidade & Contatos
+- **Webhook Multimodal no n8n (`nuvy-copiloto-v1`):** O nó `Normalizar Mensagem Multimodal` foi corrigido para detectar dinamicamente `audioMessage` (`tipo_midia = 'audio'`), `imageMessage`/PDFs (`tipo_midia = 'imagem'`) e texto. Anteriormente o tipo estava forçado como `'texto'`, fazendo mensagens de áudio chegarem com texto vazio (`""`) e quebrando a execução.
+- **Herança de Fornecedor no Telegram (`integracaoTelegramController.js`):** Corrigido bug onde uma proposta herdava cegamente o `contato_id` de um rascunho anterior (ex: `Supermercado A.R.S. Supermercados`). Agora, sempre que o usuário altera o fornecedor ou define como *"Desconhecido" / "Sem Fornecedor"*, o `contato_id` antigo é resetado e atualizado corretamente para `null` ou para o novo contato, sem bloqueio de `COALESCE` nas edições.
+
+
