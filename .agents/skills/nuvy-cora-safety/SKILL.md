@@ -1,3 +1,11 @@
+---
+name: nuvy-cora-safety
+description: Cora Core safety guidance for providers, tools, actions, WhatsApp, grounding, state, retries, cost and cutover.
+when_to_use: Use for Cora Core changes involving providers, tools, actions, WhatsApp, grounding, state, retries, cost or cutover.
+allowed-tools: Read, Glob, Grep, Bash
+version: 1.0.0
+---
+
 # Skill: Nuvy Cora Safety
 
 Use for Cora Core changes involving providers, tools, actions, WhatsApp, grounding, state, retries, cost or cutover.

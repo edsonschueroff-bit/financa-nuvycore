@@ -1,3 +1,11 @@
+---
+name: multitenancy
+version: 1.0.0
+description: Tenant isolation invariants for Finance and Cora data access.
+priority: P0
+trigger: model_decision
+---
+
 # Multi-Tenancy Rule
 
 - Resolve tenant/company identity from an authoritative authenticated source.

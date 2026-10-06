@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "runId": "20260813-010010-099",
+  "strategy": "merge",
+  "toolkitVersion": "2026.7.27",
+  "createdAt": "2026-08-13T01:00:10.554Z",
+  "backupDir": "/var/www/hotspot/.ag-kit-backups/20260813-010010-099",
+  "summary": {
+    "actions": 0,
+    "conflicts": 0,
+    "preserved": 0,
+    "unchanged": 221
+  },
+  "actions": [],
+  "conflicts": [],
+  "preserved": []
+}
