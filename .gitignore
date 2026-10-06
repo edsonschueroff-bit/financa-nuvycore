@@ -49,13 +49,19 @@ coverage/
 
 # Configurações de Agentes, IDEs e MCPs
 .agent/
-.agents/
 .claude/
 mcp_config.json
 */mcp_config.json
+.agents/mcp_config.json
+!.agents/
+!.agents/**
 
 # Sistema Operacional e IDEs
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# Python cache
+__pycache__/
+*.pyc

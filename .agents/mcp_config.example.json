@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest", "--api-key", "${CONTEXT7_API_KEY}"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@latest", "mcp"]
+    },
+    "convex": {
+      "command": "npx",
+      "args": ["-y", "convex@latest", "mcp", "start"]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase@latest"]
+    },
+    "testsprite": {
+      "command": "testsprite-mcp-plugin",
+      "env": {
+        "API_KEY": "${TESTSPRITE_API_KEY}"
+      }
+    },
+    "vercel": {
+      "serverUrl": "https://mcp.vercel.com",
+      "headers": {
+        "Authorization": "Bearer ${VERCEL_MCP_TOKEN}"
+      }
+    },
+    "n8n-mcp": {
+      "command": "npx",
+      "args": ["-y", "n8n-mcp"],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "https://n8n.nuvycore.online",
+        "N8N_API_KEY": "${N8N_API_KEY}"
+      }
+    }
+  }
+}
